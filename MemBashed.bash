@@ -12,9 +12,6 @@
 # The third really is what I needed after reading the docs at
 # https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 
-HOST="127.0.0.1"
-PORT=11211
-
 # Check if the environment variable's have been set
 # if not use the following defaults
 if [ -z $TTL  ]; then TTL=3600; fi
@@ -24,6 +21,45 @@ if [ -z $HOST ]; then HOST="127.0.0.1"; fi
 #
 #  STORE functions
 #
+    
+    function m_send {
+        # MemBashed m_send: makes file descriptor with connection to 
+        #                  Memcached and sends command through it
+        # Arguments :: 
+        #   1: Message to send to MemCached
+        exec 3<>/dev/tcp/$HOST/$PORT 
+
+        echo -en "$1\r\n">&3
+       
+        # The incr and decr functions don't return anything 
+        if [[ "$1" =~ ^(incr|decr).* ]]; then return; fi
+
+        # Read from file descriptor 3 until we see \r. We pass the
+        # line before that into the loop. If it matches we have a 
+        # MemCached status otherwise just print the line and move
+        # on to the next.
+        while read -u 3 -d $'\r' lastline
+        do
+            # break on MemCached status to get controlflow back
+            if [ "$lastline" == "DELETED" -o \
+                 "$lastline" == "END" -o \
+                 "$lastline" == "OK" -o \
+                 "$lastline" == "EXISTS" -o \
+                 "$lastline" == "STORED" ]; then
+                break;
+            elif [ "$lastline" == "ERROR" -o \
+                   "$lastline" == "NOT_STORED" -o \
+                   "$lastline" == "NOT_FOUND" ]; then 
+                echo $lastline 1>&2;
+                break;
+            elif [[ "$lastline" == VERSION* ]]; then 
+                echo $lastline
+                break; 
+            fi
+            echo $lastline
+        done
+    }
+
     function m_set {
         # MemBashed set; "set" means "store this data"
         # Arguments :: 
@@ -155,43 +191,6 @@ if [ -z $HOST ]; then HOST="127.0.0.1"; fi
         m_send "version";
     }
 
-    function m_send {
-        # MemBashed m_send: makes file descriptor with connection to 
-        #                  Memcached and sends command through it
-        # Arguments :: 
-        #   1: Message to send to MemCached
-        exec 3<>/dev/tcp/$HOST/$PORT 
-
-        echo -en "$1\r\n">&3
-       
-        # The incr and decr functions don't return anything 
-        if [[ "$1" =~ ^(incr|decr).* ]]; then return; fi
-
-        # Read from file descriptor 3 until we see \r. We pass the
-        # line before that into the loop. If it matches we have a 
-        # MemCached status otherwise just print the line and move
-        # on to the next.
-        while read -u 3 -d $'\r' lastline
-        do
-            # break on MemCached status to get controlflow back
-            if [ "$lastline" == "DELETED" -o \
-                 "$lastline" == "END" -o \
-                 "$lastline" == "OK" -o \
-                 "$lastline" == "EXISTS" -o \
-                 "$lastline" == "STORED" ]; then
-                break;
-            elif [ "$lastline" == "ERROR" -o \
-                   "$lastline" == "NOT_STORED" -o \
-                   "$lastline" == "NOT_FOUND" ]; then 
-                echo $lastline 1>&2;
-                break;
-            elif [[ "$lastline" == VERSION* ]]; then 
-                echo $lastline
-                break; 
-            fi
-            echo $lastline
-        done
-    }
     
     # MemBashed stats; return stats from MemCached
     function m_stats { m_send "stats"; }
@@ -206,59 +205,4 @@ if [ -z $HOST ]; then HOST="127.0.0.1"; fi
         m_send "$@"
     }
 
-#
-# TESTS
-#
-    # connection + version
-    echo -en "[+] Checking version of MemCached on ${HOST}:${PORT}... " 
-    VERSION=$(m_version|cut -d' ' -f2)
-    echo "done"
-    echo -e "[+] Server has version ${VERSION}." 
 
-    echo -en "[+] Let's raise an error... " 
-    m_touch NOVAR 1
-
-    # send raw commands
-    echo "[+] Send raw command: TEST with TTL of 3 with DATA ABCD."
-    m_custom_cmd "set TEST 0 3 4\r\nABCD" 
-
-    # wait for TEST to expire
-    echo "[+] Get TEST the following 4 seconds."
-    for t in $(seq 0 3); 
-    do
-        echo -n "  RETRIEVED: "
-        m_get TEST
-        sleep 1
-    done
-
-    # Try to add to non existing key
-    RES=$(m_set var6 abcd)
-    printf "\n[+] Add var6 abcd : %s\n" $RES
-    
-    # Let's play with prepend and append 
-    echo "[+] Set key EXPANDABLE with value 456."
-    m_set EXPENDABLE 456
-    echo "[+] Prepend 123 to EXPANDABLE." 
-    m_prepend EXPENDABLE 123
-    echo "[+] Append 7890 to EXPANDABLE." 
-    m_append EXPENDABLE 7890
-    # and show the result
-    m_get EXPENDABLE
-   
-    m_set COUNTER 0
-
-    # and lets count
-    for i in $(seq 1 5);
-    do
-        m_incr COUNTER $i;
-        m_get COUNTER
-    done
-
-    for i in $(seq 1 6);
-    do
-        m_decr COUNTER $i;
-        m_get COUNTER
-    done
-    
-    m_delete COUNTER
-    m_decr COUNTER 1
