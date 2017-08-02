@@ -5,7 +5,6 @@
 Could be nice for IPC or really fast cross process storing of values.
 
 ```
-$ exec 3<>/dev/tcp/127.0.0.1/11211
 $ source MemBashed.bash 
 $ m_stats | egrep "uptime|pid"
 STAT pid 4487
