@@ -14,21 +14,29 @@
 
 # Check if the environment variable's have been set
 # if not use the following defaults
-if [ -z $TTL  ]; then TTL=3600; fi
-if [ -z $PORT ]; then PORT=11211; fi
-if [ -z $HOST ]; then HOST="127.0.0.1"; fi
+if [ -z $TTL  ]; then export TTL=3600; fi
+if [ -z $PORT ]; then export PORT=11211; fi
+if [ -z $MEMCACHED_HOST ]; then export MEMCACHED_HOST="127.0.0.1"; fi
 
+if [ ! $_ != $0 ]; then
+    echo "loading MemBashed functions"
+    
+    if [ $SHELL != "*bash" ]; then 
+        echo "You are not using bash, but ${SHELL}. Some shells do "
+        echo "not support the used /dev/tcp pseudo device."
+        exit;
+    fi
+fi
 #
 #  STORE functions
 #
-    
+ 
     function m_send {
         # MemBashed m_send: makes file descriptor with connection to 
         #                  Memcached and sends command through it
         # Arguments :: 
         #   1: Message to send to MemCached
-        exec 3<>/dev/tcp/$HOST/$PORT 
-
+        exec 3<>/dev/tcp/$MEMCACHED_HOST/$PORT 
         echo -en "$1\r\n">&3
        
         # The incr and decr functions don't return anything 
