@@ -13,5 +13,4 @@ $ m_set MEMCACHED_FOR_ALL yes
 $ m_get MEMCACHED_FOR_ALL
 yes
 ```
-
-Or you could just source it in a script, then you do not have to make the file descriptor.
+If you have any contributions, please share them.
